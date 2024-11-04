@@ -4,68 +4,51 @@ from dotenv import load_dotenv, find_dotenv
 from langchain_openai import ChatOpenAI
 from crewai import Crew, Task
 from agents.base_agent import ResearcherAgent, AnalyzerAgent
+from formatters.document_formatter import DocumentFormatter
+from formatters.excel_formatter import ExcelFormatter
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
-# Configure more detailed logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s",
+    handlers=[RichHandler(rich_tracebacks=True)]
+)
 
-# More robust env loading
-env_path = find_dotenv()
-if not env_path:
-    raise ValueError("No .env file found")
-
-logger.debug(f"Found .env file at: {env_path}")
-
-# Force reload environment variables
-load_dotenv(env_path, override=True)
-
-# Get API key with detailed logging
-api_key = os.getenv("OPENAI_API_KEY")
-logger.debug(f"Raw API key from env: {api_key[:10]}... (length: {len(api_key) if api_key else 0})")
-
-# Validate API key
-if not api_key:
-    raise ValueError("OPENAI_API_KEY not found in environment variables")
-elif not api_key.startswith("sk-"):
-    raise ValueError(f"Invalid API key format. Key should start with 'sk-', got: {api_key[:10]}...")
+console = Console()
+logger = logging.getLogger("recycling-research")
 
 def create_tasks(researcher, analyzer, location):
     research_task = Task(
-        description=f"""Research recycling services and programs in {location}.
-        Focus on:
-        1. Available recycling programs
-        2. Types of materials accepted
-        3. Collection schedules
-        4. Special waste handling
-        5. Contact information
+        description=f"""Research recycling services and facilities in {location}.
         
-        Use the web_search tool to find relevant websites and the web_scraper to gather detailed information.
-        Provide comprehensive information with specific details and verified sources.""",
-        expected_output="""A detailed report containing:
-        1. List of available recycling programs
-        2. Accepted materials and their categories
-        3. Collection schedules and procedures
-        4. Special waste handling instructions
-        5. Verified contact information and sources""",
+        Required Information:
+        1. Identify all recycling facilities and drop-off centers
+        2. Document their exact locations, contact details, and operating hours
+        3. List accepted materials for each facility
+        4. Note any special requirements or restrictions
+        5. Find information about collection schedules and procedures
+        
+        {researcher.structured_output_format()}
+        
+        Use the web_search tool to find facilities and the web_scraper to gather detailed information.
+        Verify all information and provide complete details for each facility.""",
+        expected_output="""A comprehensive list of recycling facilities and services, 
+        with complete details formatted according to the specified structure.""",
         agent=researcher
     )
 
     analysis_task = Task(
         description=f"""Analyze the research findings for {location} and create a structured report.
-        Include:
-        1. Summary of available services
-        2. Comparison with best practices
-        3. Identification of unique programs
-        4. Gaps in service
-        5. Recommendations for improvement
         
-        Format the information in a clear, organized manner with main points and supporting details.""",
-        expected_output="""A structured analysis report containing:
-        1. Executive summary of services
-        2. Comparative analysis with best practices
-        3. Highlighted unique programs
-        4. Identified service gaps
-        5. Specific recommendations for improvement""",
+        {analyzer.structured_output_format()}
+        
+        Ensure all facility information is preserved and properly formatted in the analysis.
+        Include specific metrics and data points where available.""",
+        expected_output="""A detailed analysis report following the specified format,
+        including facility details, comparative analysis, and specific recommendations.""",
         agent=analyzer
     )
 
@@ -73,41 +56,86 @@ def create_tasks(researcher, analyzer, location):
 
 def main():
     try:
-        logger.info("Starting application...")
-        
-        # Initialize the LLM
-        llm = ChatOpenAI(
-            model="gpt-4-turbo-preview",
-            temperature=0.7
-        )
-        
-        # Initialize agents
-        researcher = ResearcherAgent(llm=llm)
-        analyzer = AnalyzerAgent(llm=llm)
-        
-        # Set the location to research
-        location = "Boston, MA"  # You can modify this or make it a parameter
-        
-        # Create tasks
-        tasks = create_tasks(researcher, analyzer, location)
-        
-        # Create the crew
-        crew = Crew(
-            agents=[researcher, analyzer],
-            tasks=tasks,
-            verbose=True
-        )
-        
-        # Run the crew
-        logger.info(f"Starting research for {location}")
-        result = crew.kickoff()
-        
-        logger.info("Research completed successfully")
-        logger.info("Results:")
-        print(result)
-        
+        # Initialize Progress
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            # Setup task
+            setup_task = progress.add_task("[yellow]Setting up application...", total=6)
+            
+            # Load environment variables
+            env_path = find_dotenv()
+            if not env_path:
+                raise ValueError("No .env file found")
+            load_dotenv(env_path, override=True)
+            progress.update(setup_task, advance=1)
+            
+            # Initialize the LLM
+            progress.update(setup_task, description="[yellow]Initializing LLM...")
+            llm = ChatOpenAI(
+                model="gpt-4-turbo-preview",
+                temperature=0.7
+            )
+            progress.update(setup_task, advance=1)
+            
+            # Initialize agents
+            progress.update(setup_task, description="[yellow]Initializing agents...")
+            researcher = ResearcherAgent(llm=llm)
+            analyzer = AnalyzerAgent(llm=llm)
+            progress.update(setup_task, advance=1)
+            
+            # Set location and create tasks
+            location = "Lagos, Nigeria"
+            progress.update(setup_task, description="[yellow]Creating research tasks...")
+            tasks = create_tasks(researcher, analyzer, location)
+            progress.update(setup_task, advance=1)
+            
+            # Create and run the crew
+            progress.update(setup_task, description=f"[blue]Researching {location}...")
+            crew = Crew(
+                agents=[researcher, analyzer],
+                tasks=tasks,
+                verbose=True
+            )
+            result = crew.kickoff()
+            
+            # Convert CrewOutput to string
+            result_text = str(result)
+            
+            # Create output directory
+            output_dir = "output"
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Save results
+            progress.update(setup_task, description="[cyan]Saving results...")
+            
+            # Format and save Word document
+            doc_formatter = DocumentFormatter(location)
+            doc = doc_formatter.format_report(result_text)
+            doc_formatter.save(f"{output_dir}/recycling_analysis_{location.replace(', ', '_')}.docx")
+            
+            # Format and save Excel file
+            excel_formatter = ExcelFormatter(location)
+            excel_formatter.format_data(result_text)
+            excel_formatter.save(f"{output_dir}/recycling_metrics_{location.replace(', ', '_')}.xlsx")
+            
+            progress.update(setup_task, advance=1)
+            
+            # Complete all tasks
+            progress.update(setup_task, description="[green]Research completed!")
+            
+            # Print results
+            console.print("\n[bold]Results:[/bold]")
+            console.print(result)
+            
+            console.print("\n[bold green]Files saved:[/bold green]")
+            console.print(f"- Word document: recycling_analysis_{location.replace(', ', '_')}.docx")
+            console.print(f"- Excel spreadsheet: recycling_metrics_{location.replace(', ', '_')}.xlsx")
+            
     except Exception as e:
-        logger.error(f"An error occurred: {str(e)}")
+        console.print(f"\n[bold red]Error:[/bold red] {str(e)}", style="red")
         raise
 
 if __name__ == "__main__":

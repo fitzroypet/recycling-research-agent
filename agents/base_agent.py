@@ -19,6 +19,10 @@ class BaseAgent(Agent):
             
         logging.debug(f"Initializing agent with LLM: {kwargs.get('llm', 'No LLM specified')}")
         super().__init__(*args, **kwargs)
+    
+    def structured_output_format(self):
+        """Base method that should be overridden by child classes"""
+        return ""
 
 class AnalyzerAgent(BaseAgent):
     def __init__(self, llm=None):
