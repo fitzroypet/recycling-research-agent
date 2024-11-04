@@ -3,7 +3,8 @@ import os
 from dotenv import load_dotenv, find_dotenv
 from langchain_openai import ChatOpenAI
 from crewai import Crew, Task
-from agents.base_agent import ResearcherAgent, AnalyzerAgent
+from agents.researcher import ResearcherAgent
+from agents.analyzer import AnalyzerAgent
 from formatters.document_formatter import DocumentFormatter
 from formatters.excel_formatter import ExcelFormatter
 from rich.console import Console
@@ -87,7 +88,7 @@ def main():
             progress.update(setup_task, advance=1)
             
             # Set location and create tasks
-            location = "Lagos, Nigeria"
+            location = "Benin City, Nigeria"
             progress.update(setup_task, description="[yellow]Creating research tasks...")
             tasks = create_tasks(researcher, analyzer, location)
             progress.update(setup_task, advance=1)
@@ -137,6 +138,18 @@ def main():
     except Exception as e:
         console.print(f"\n[bold red]Error:[/bold red] {str(e)}", style="red")
         raise
+
+def validate_agent_output(output, expected_sections):
+    """Validates the agent's output for the presence of expected sections."""
+    missing_sections = [section for section in expected_sections if section not in output]
+    
+    if missing_sections:
+        logging.warning(f"Missing sections in output: {missing_sections}")
+        # Add placeholders for missing sections
+        for section in missing_sections:
+            output[section] = "N/A"  # Placeholder or handle as needed
+
+    return output
 
 if __name__ == "__main__":
     main()

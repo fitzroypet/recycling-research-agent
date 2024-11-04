@@ -1,11 +1,12 @@
 from .base_agent import BaseAgent
+import logging
 
 class ResearcherAgent(BaseAgent):
     def __init__(self, llm=None):
         super().__init__(
             llm=llm,
             role='Recycling Services Researcher',
-            goal='Find and structure detailed information about recycling facilities and services',
+            goal='Research and document recycling facilities and services',
             backstory="""You are an expert at finding and structuring information about recycling 
             services. For each location, you identify and document recycling facilities, their 
             services, and operational details in a structured format.""",
@@ -20,7 +21,7 @@ class ResearcherAgent(BaseAgent):
         FACILITY INFORMATION:
         Name: [Facility Name]
         Address: [Full Address]
-        Contact: [Phone and/or Email]
+        Contact: [Phone and Email]
         Materials Accepted: [List of materials, comma-separated]
         Hours: [Operating Hours]
         Requirements: [Any special requirements or restrictions]
@@ -34,3 +35,11 @@ class ResearcherAgent(BaseAgent):
         Collection Information:
         [Details about collection schedules and procedures]
         """
+
+    def handle_tool_failure(self, error):
+        logging.error(f"Error encountered: {error}")
+        # Implement logic to adjust search queries or fallback mechanisms
+        if 'scraping' in str(error).lower():
+            # Attempt a web search as a fallback
+            logging.info("Scraping failed, switching to web search.")
+            # Implement web search logic here

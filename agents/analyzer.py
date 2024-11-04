@@ -5,7 +5,7 @@ class AnalyzerAgent(BaseAgent):
         super().__init__(
             llm=llm,
             role='Recycling Data Analyzer',
-            goal='Analyze and structure recycling service information with clear facility details',
+            goal='Analyze recycling facilities data and create comprehensive reports',
             backstory="""You are an expert at analyzing and organizing recycling services data.
             You structure information about facilities and services in a clear, consistent format,
             and provide insights about service coverage and gaps.""",
